@@ -9,12 +9,15 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.text.InputType
+import android.view.Menu // Importe Menu
+import android.view.MenuItem // Importe MenuItem
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.SearchView // Importe SearchView para a barra de pesquisa
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
@@ -37,14 +40,16 @@ import java.util.UUID
  * além de anexar fotos a eles através da câmera ou galeria.
  * Os dados são **persistidos em um banco de dados Room** nesta versão,
  * garantindo que não se percam ao fechar o aplicativo.
+ * Inclui funcionalidade de pesquisa na barra superior (ActionBar).
  */
-class ProductsActivity : AppCompatActivity() { // Abre a classe ProductsActivity
+class ProductsActivity : AppCompatActivity() {
 
     private lateinit var productAdapter: ProductAdapter
-    private lateinit var productDao: ProductDao
+    private lateinit var productDao: ProductDao // Instância do DAO para interagir com o banco de dados.
 
-    private var currentProductForImage: Product? = null
-    private var latestTmpUri: Uri? = null
+    // Variáveis auxiliares para o gerenciamento de imagens.
+    private var currentProductForImage: Product? = null // Armazena o produto que está sendo editado para foto.
+    private var latestTmpUri: Uri? = null // Armazena a URI temporária para fotos tiradas pela câmera.
 
     /**
      * Launcher para solicitar múltiplas permissões em tempo de execução (Android 6.0+).
@@ -60,19 +65,21 @@ class ProductsActivity : AppCompatActivity() { // Abre a classe ProductsActivity
      */
     private val takePictureLauncher = registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
         if (success) {
+            // Se a foto foi capturada com sucesso, associa a URI ao produto atual.
             latestTmpUri?.let { uri ->
                 currentProductForImage?.imageUrl = uri.toString()
                 currentProductForImage?.let { product ->
+                    // Lança uma corrotina para atualizar o produto no banco de dados em uma thread de background (I/O).
                     lifecycleScope.launch(Dispatchers.IO) {
-                        productDao.updateProduct(product)
+                        productDao.updateProduct(product) // Atualiza o produto no banco (com a nova imagem).
                     }
                 }
             }
         } else {
             Toast.makeText(this, "Foto não capturada.", Toast.LENGTH_SHORT).show()
         }
-        currentProductForImage = null
-        latestTmpUri = null
+        currentProductForImage = null // Limpa a referência do produto.
+        latestTmpUri = null // Limpa a URI temporária.
     }
 
     /**
@@ -81,14 +88,16 @@ class ProductsActivity : AppCompatActivity() { // Abre a classe ProductsActivity
      */
     private val selectPictureLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         uri?.let {
+            // Se uma imagem foi selecionada, associa a URI ao produto atual.
             currentProductForImage?.imageUrl = it.toString()
             currentProductForImage?.let { product ->
+                // Lança uma corrotina para atualizar o produto no banco de dados em uma thread de background (I/O).
                 lifecycleScope.launch(Dispatchers.IO) {
-                    productDao.updateProduct(product)
+                    productDao.updateProduct(product) // Atualiza o produto no banco (com a nova imagem).
                 }
             }
         } ?: Toast.makeText(this, "Nenhuma imagem selecionada.", Toast.LENGTH_SHORT).show()
-        currentProductForImage = null
+        currentProductForImage = null // Limpa a referência do produto.
     }
 
     /**
@@ -103,41 +112,55 @@ class ProductsActivity : AppCompatActivity() { // Abre a classe ProductsActivity
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_products)
 
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = "Itens no seu depósito"
+        // Configura a ActionBar (barra superior do aplicativo).
+        supportActionBar?.setDisplayHomeAsUpEnabled(true) // Habilita o botão de voltar.
+        supportActionBar?.title = "Itens no seu depósito" // Define o título da barra.
 
+        // Inicializa o banco de dados e o DAO para interagir com os dados.
+        // `applicationContext` é usado para garantir que o banco de dados tenha um ciclo de vida ligado ao aplicativo.
         productDao = AppDatabase.getDatabase(applicationContext).productDao()
 
+        // Configura o RecyclerView.
         val recyclerView: RecyclerView = findViewById(R.id.recyclerViewProducts)
-        recyclerView.layoutManager = LinearLayoutManager(this)
+        recyclerView.layoutManager = LinearLayoutManager(this) // Define um layout linear vertical.
 
+        // Inicializa o ProductAdapter com uma lista vazia inicialmente.
+        // A lista real será preenchida e atualizada pelo Flow do Room.
         productAdapter = ProductAdapter(
-            mutableListOf(),
+            mutableListOf(), // Passa uma lista vazia inicialmente.
             removeItemClickListener = { productToRemove ->
+                // Lógica a ser executada ao clicar em "Remover".
                 removeItem(productToRemove)
             },
             addImageClickListener = { productToUpdate ->
+                // Lógica a ser executada ao clicar em "Adicionar/Mudar Foto".
                 currentProductForImage = productToUpdate
-                checkAndRequestPermissions()
+                checkAndRequestPermissions() // Inicia o fluxo de permissões e seleção de imagem.
             },
             editItemLongClickListener = { productToEdit ->
+                // Lógica a ser executada ao pressionar um item longamente para edição.
                 showEditQuantityDialog(productToEdit)
-                true
+                true // Retorna true para indicar que o evento foi consumido.
             }
         )
-        recyclerView.adapter = productAdapter
+        recyclerView.adapter = productAdapter // Define o adaptador para o RecyclerView.
 
+        // Coleta os produtos do banco de dados (Flow) e atualiza o RecyclerView.
+        // `lifecycleScope.launch` garante que a corrotina seja executada no escopo de vida da Activity.
+        // `collectLatest` processa apenas a emissão mais recente do Flow, útil para UI.
         lifecycleScope.launch {
             productDao.getAllProducts().collectLatest { products ->
-                productAdapter.updateProductList(products)
+                productAdapter.updateProductList(products) // Atualiza a lista no adaptador.
             }
         }
 
+        // Popula o banco de dados com itens iniciais APENAS se estiver vazio.
         setupInitialProducts()
 
+        // Configura o Floating Action Button (FAB) para adicionar novos produtos.
         val fabAddProduct: FloatingActionButton = findViewById(R.id.fabAddProduct)
         fabAddProduct.setOnClickListener {
-            showAddProductDialog()
+            showAddProductDialog() // Exibe o diálogo para adicionar um novo item.
         }
     }
 
@@ -148,9 +171,105 @@ class ProductsActivity : AppCompatActivity() { // Abre a classe ProductsActivity
      * @return true para indicar que o evento foi tratado.
      */
     override fun onSupportNavigateUp(): Boolean {
-        onBackPressedDispatcher.onBackPressed()
+        onBackPressedDispatcher.onBackPressed() // Volta para a Activity anterior na pilha.
         return true
     }
+
+    /**
+     * Infla o menu definido em XML ([R.menu.main_menu]) para a ActionBar desta Activity.
+     * Configura o [SearchView] para filtrar a lista de produtos.
+     *
+     * @param menu O [Menu] a ser inflado e configurado.
+     * @return `true` para exibir o menu; `false` caso contrário.
+     */
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menuInflater.inflate(R.menu.main_menu, menu) // Infla o menu "main_menu.xml"
+        val searchItem = menu?.findItem(R.id.action_search) // Encontra o item de pesquisa pelo seu ID.
+        val searchView = searchItem?.actionView as? SearchView // Converte o ActionView para um SearchView.
+
+        searchView?.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
+            /**
+             * Chamado quando o usuário submete a pesquisa (pressiona Enter ou o botão de pesquisa).
+             *
+             * @param query O texto da pesquisa submetido.
+             * @return `true` se a consulta foi tratada pelo listener, `false` caso contrário.
+             */
+            override fun onQueryTextSubmit(query: String?): Boolean {
+                // Ao submeter, podemos filtrar ou apenas confiar no onQueryTextChange para atualização contínua.
+                filterProducts(query) // Chama a função de filtragem.
+                return true
+            }
+
+            /**
+             * Chamado quando o texto da pesquisa é alterado.
+             *
+             * @param newText O novo texto na barra de pesquisa.
+             * @return `true` se a consulta foi tratada pelo listener, `false` caso contrário.
+             */
+            override fun onQueryTextChange(newText: String?): Boolean {
+                filterProducts(newText) // Chama a função de filtragem em tempo real.
+                return true
+            }
+        })
+        return true
+    }
+
+    /**
+     * Lida com cliques nos itens do menu na ActionBar (incluindo o botão de voltar padrão).
+     *
+     * @param item O [MenuItem] que foi clicado.
+     * @return `true` se o evento foi tratado; `false` para o tratamento padrão.
+     */
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            android.R.id.home -> { // ID padrão para o botão "Voltar" (seta) na ActionBar.
+                onBackPressedDispatcher.onBackPressed() // Volta para a Activity anterior.
+                true
+            }
+            R.id.action_settings -> {
+                Toast.makeText(this, "Configurações clicado!", Toast.LENGTH_SHORT).show()
+                true
+            }
+            R.id.action_about -> {
+                Toast.makeText(this, "Sobre clicado!", Toast.LENGTH_SHORT).show()
+                true
+            }
+            else -> super.onOptionsItemSelected(item) // Deixa o tratamento padrão para outros itens.
+        }
+    }
+
+    /**
+     * Filtra a lista de produtos exibida no RecyclerView com base em um texto de pesquisa.
+     * A filtragem é aplicada aos campos 'type' e 'model' do produto.
+     *
+     * @param query O texto a ser usado para filtrar os produtos. Se for nulo ou vazio, todos os produtos são exibidos.
+     */
+    private fun filterProducts(query: String?) {
+        // Lança uma corrotina para buscar e filtrar produtos em uma thread de background (I/O).
+        lifecycleScope.launch(Dispatchers.IO) {
+            val allProducts = productDao.getAllProducts().firstOrNull() ?: emptyList() // Obtém a lista completa do banco, ou uma lista vazia se for nulo.
+            val filteredList = mutableListOf<Product>()
+
+            if (query.isNullOrEmpty()) {
+                filteredList.addAll(allProducts) // Se a pesquisa estiver vazia, mostra todos os produtos.
+            } else {
+                val lowerCaseQuery = query.toLowerCase() // Converte a pesquisa para minúsculas para comparação sem distinção de caso.
+                for (product in allProducts) {
+                    // Verifica se o tipo ou o modelo do produto contém o texto da pesquisa.
+                    if (product.type.toLowerCase().contains(lowerCaseQuery) ||
+                        product.model.toLowerCase().contains(lowerCaseQuery)) {
+                        filteredList.add(product) // Adiciona o produto à lista filtrada.
+                    }
+                }
+            }
+            // Atualiza a lista exibida pelo adaptador na thread principal (UI thread).
+            // A atualização da UI deve sempre ocorrer na thread principal.
+            launch(Dispatchers.Main) {
+                productAdapter.updateProductList(filteredList)
+            }
+        }
+    }
+
 
     /**
      * Popula o banco de dados com alguns produtos iniciais se ele estiver vazio.
@@ -158,6 +277,8 @@ class ProductsActivity : AppCompatActivity() { // Abre a classe ProductsActivity
      */
     private fun setupInitialProducts() {
         lifecycleScope.launch(Dispatchers.IO) {
+            // Verifica se o banco de dados está vazio antes de adicionar produtos iniciais.
+            // `firstOrNull()` obtém a primeira emissão do Flow e retorna null se o Flow estiver vazio.
             val currentProducts = productDao.getAllProducts().firstOrNull()
             if (currentProducts.isNullOrEmpty()) {
                 productDao.insertProduct(Product(UUID.randomUUID().toString(), "Eletrônico", 5, "Smartphone X"))
@@ -176,34 +297,42 @@ class ProductsActivity : AppCompatActivity() { // Abre a classe ProductsActivity
         val builder = AlertDialog.Builder(this)
         builder.setTitle("Adicionar Novo Item")
 
+        // Cria um layout linear vertical para os campos de entrada no diálogo.
         val layout = LinearLayout(this)
         layout.orientation = LinearLayout.VERTICAL
-        layout.setPadding(50, 20, 50, 20)
+        layout.setPadding(50, 20, 50, 20) // Espaçamento interno.
 
+        // Campo de entrada para o Tipo.
         val inputType = EditText(this)
         inputType.hint = "Tipo (ex: Eletrônico)"
         layout.addView(inputType)
 
+        // Campo de entrada para a Quantidade (apenas números).
         val inputQuantity = EditText(this)
         inputQuantity.hint = "Quantidade"
         inputQuantity.inputType = InputType.TYPE_CLASS_NUMBER
         layout.addView(inputQuantity)
 
+        // Campo de entrada para o Modelo.
         val inputModel = EditText(this)
         inputModel.hint = "Modelo (ex: Smartphone X)"
         layout.addView(inputModel)
 
-        builder.setView(layout)
+        builder.setView(layout) // Define o layout personalizado para o diálogo.
 
+        // Botão "Adicionar" no diálogo.
         builder.setPositiveButton("Adicionar") { dialog, _ ->
             val type = inputType.text.toString().trim()
             val quantityStr = inputQuantity.text.toString().trim()
             val model = inputModel.text.toString().trim()
 
+            // Valida se todos os campos foram preenchidos.
             if (type.isNotEmpty() && quantityStr.isNotEmpty() && model.isNotEmpty()) {
                 try {
-                    val quantity = quantityStr.toInt()
+                    val quantity = quantityStr.toInt() // Converte a quantidade para inteiro.
+                    // Cria um novo objeto Product com um ID único e sem imagem inicial.
                     val newProduct = Product(UUID.randomUUID().toString(), type, quantity, model, null)
+                    // Lança uma corrotina para inserir o novo produto no banco de dados em background.
                     lifecycleScope.launch(Dispatchers.IO) {
                         productDao.insertProduct(newProduct)
                     }
@@ -213,14 +342,15 @@ class ProductsActivity : AppCompatActivity() { // Abre a classe ProductsActivity
             } else {
                 Toast.makeText(this, "Preencha todos os campos.", Toast.LENGTH_SHORT).show()
             }
-            dialog.dismiss()
+            dialog.dismiss() // Fecha o diálogo.
         }
 
+        // Botão "Cancelar" no diálogo.
         builder.setNegativeButton("Cancelar") { dialog, _ ->
-            dialog.cancel()
+            dialog.cancel() // Cancela o diálogo.
         }
 
-        builder.show()
+        builder.show() // Exibe o diálogo.
     }
 
     /**
@@ -234,15 +364,16 @@ class ProductsActivity : AppCompatActivity() { // Abre a classe ProductsActivity
             .setTitle("Remover Item")
             .setMessage("Tem certeza que deseja remover o item '${product.type} - ${product.model}'?")
             .setPositiveButton("Sim") { dialog, _ ->
+                // Lança uma corrotina para excluir o produto do banco de dados em background.
                 lifecycleScope.launch(Dispatchers.IO) {
                     productDao.deleteProduct(product)
                 }
-                dialog.dismiss()
+                dialog.dismiss() // Fecha o diálogo.
             }
             .setNegativeButton("Não") { dialog, _ ->
-                dialog.cancel()
+                dialog.cancel() // Cancela o diálogo.
             }
-            .show()
+            .show() // Exibe o diálogo.
     }
 
     /**
@@ -255,24 +386,29 @@ class ProductsActivity : AppCompatActivity() { // Abre a classe ProductsActivity
         val builder = AlertDialog.Builder(this)
         builder.setTitle("Editar Quantidade")
 
+        // Campo de entrada para a nova quantidade (apenas números).
         val input = EditText(this)
         input.inputType = InputType.TYPE_CLASS_NUMBER
-        input.setText(product.quantity.toString())
-        input.setSelection(input.text.length)
+        input.setText(product.quantity.toString()) // Preenche com a quantidade atual.
+        input.setSelection(input.text.length) // Coloca o cursor no final do texto.
 
+        // Cria um layout para adicionar padding ao campo de entrada.
         val layout = LinearLayout(this)
         layout.orientation = LinearLayout.VERTICAL
         layout.setPadding(50, 20, 50, 20)
         layout.addView(input)
 
-        builder.setView(layout)
+        builder.setView(layout) // Define o layout personalizado para o diálogo.
 
+        // Botão "Salvar" no diálogo.
         builder.setPositiveButton("Salvar") { dialog, _ ->
             val newQuantityStr = input.text.toString().trim()
             if (newQuantityStr.isNotEmpty()) {
                 try {
-                    val newQuantity = newQuantityStr.toInt()
+                    val newQuantity = newQuantityStr.toInt() // Converte a nova quantidade.
+                    // Cria uma cópia do produto com a quantidade atualizada.
                     val updatedProduct = product.copy(quantity = newQuantity)
+                    // Lança uma corrotina para atualizar o produto no banco de dados em background.
                     lifecycleScope.launch(Dispatchers.IO) {
                         productDao.updateProduct(updatedProduct)
                     }
@@ -282,13 +418,14 @@ class ProductsActivity : AppCompatActivity() { // Abre a classe ProductsActivity
             } else {
                 Toast.makeText(this, "A quantidade não pode ser vazia.", Toast.LENGTH_SHORT).show()
             }
-            dialog.dismiss()
+            dialog.dismiss() // Fecha o diálogo.
         }
 
+        // Botão "Cancelar" no diálogo.
         builder.setNegativeButton("Cancelar") { dialog, _ ->
-            dialog.cancel()
+            dialog.cancel() // Cancela o diálogo.
         }
-        builder.show()
+        builder.show() // Exibe o diálogo.
     }
 
     // --- Métodos de Gerenciamento de Permissões e Imagem (Funções auxiliares para fotos) ---
@@ -410,4 +547,4 @@ class ProductsActivity : AppCompatActivity() { // Abre a classe ProductsActivity
         // Solicita ao sistema para abrir o seletor de conteúdo (galeria) para imagens de qualquer tipo.
         selectPictureLauncher.launch("image/*")
     }
-} // Fecha a classe ProductsActivity
+}
