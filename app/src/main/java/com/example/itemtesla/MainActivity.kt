@@ -11,6 +11,17 @@ import com.example.itemtesla.R
  *
  * Esta Activity contém um único botão "Depósito" que, ao ser clicado,
  * navega para a [ProductsActivity] onde a lista de itens é gerenciada.
+ *
+ * @author [Leviuex]
+ * @since [Data Final de Criação 02/06/25]
+ * @version 1.0
+ * @see ProductsActivity
+ */
+/**
+ * [MainActivity] é a tela inicial do aplicativo ItemTesla.
+ *
+ * Esta Activity contém um único botão "Depósito" que, ao ser clicado,
+ * navega para a [ProductsActivity] onde a lista de itens é gerenciada.
  */
 class MainActivity : AppCompatActivity() {
     /**
