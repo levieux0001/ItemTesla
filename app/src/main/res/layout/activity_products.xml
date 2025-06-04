@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#FFFFFF"
+    tools:context=".ProductsActivity">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Itens no seu Depósito"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:textColor="#3F51B5"
+        android:layout_marginTop="16dp"
+        android:layout_marginBottom="24dp"/>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerViewProducts"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:clipToPadding="false"
+        android:scrollbars="vertical"
+        tools:listitem="@layout/item_product" /> <com.google.android.material.floatingactionbutton.FloatingActionButton
+    android:id="@+id/fabAddProduct"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_gravity="end|bottom"
+    android:layout_margin="16dp"
+    android:clickable="true"
+    android:focusable="true"
+    android:contentDescription="Adicionar novo item"
+    app:srcCompat="@android:drawable/ic_input_add"
+    app:backgroundTint="#00BCD4" app:tint="#FFFFFF" />
+
+</LinearLayout>
